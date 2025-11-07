@@ -1,0 +1,12 @@
+[requires]
+boost/1.84.0
+spdlog/1.13.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[options]
+boost:without_test=True
+boost:without_python=True
+spdlog:header_only=True
