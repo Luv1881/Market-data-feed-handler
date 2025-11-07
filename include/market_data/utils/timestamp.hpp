@@ -2,7 +2,10 @@
 
 #include "../core/common.hpp"
 #include <chrono>
+#include <cstdio>
 #include <ctime>
+#include <string>
+#include <thread>
 
 namespace market_data {
 
@@ -85,7 +88,7 @@ public:
         std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
 
         char result[80];
-        std::snprintf(result, sizeof(result), "%s.%09lu", buffer, nanos);
+        std::snprintf(result, sizeof(result), "%s.%09llu", buffer, nanos);
         return std::string(result);
     }
 

@@ -24,6 +24,8 @@ add_compile_options(
     -Wextra
     -Wpedantic
     -Werror
+    -Wno-interference-size  # Suppress C++20 std::hardware_destructive_interference_size ABI warning
+    -Wno-unused-result      # Allow ignoring [[nodiscard]] in test/benchmark code
     -fno-exceptions
     -fno-rtti
     $<$<CONFIG:Release>:-fno-omit-frame-pointer>

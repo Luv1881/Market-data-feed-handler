@@ -25,7 +25,7 @@ enum class Side : uint8_t {
 };
 
 // Market event structure - exactly 64 bytes for cache efficiency
-struct alignas(CACHE_LINE_SIZE) MarketEvent {
+struct alignas(64) MarketEvent {
     // Timestamp fields (16 bytes)
     uint64_t exchange_timestamp;  // Exchange-provided timestamp
     uint64_t receive_timestamp;   // Local receive timestamp (TSC)
@@ -49,8 +49,9 @@ struct alignas(CACHE_LINE_SIZE) MarketEvent {
     uint8_t book_level;           // For book updates (0-based)
     uint8_t flags;                // Additional flags
 
-    // Padding to ensure 64-byte alignment
-    uint8_t _padding[60 - 48];
+    // Padding to reach exactly 64 bytes
+    // Current size: 8+8+8+8+8+8+4+4+4+1+1+1+1 = 64 bytes
+    // No padding needed as we're already at 64 bytes
 
     MarketEvent()
         : exchange_timestamp(0)
@@ -66,12 +67,11 @@ struct alignas(CACHE_LINE_SIZE) MarketEvent {
         , side(Side::UNKNOWN)
         , book_level(0)
         , flags(0)
-        , _padding{}
     {}
 };
 
 static_assert(sizeof(MarketEvent) == 64, "MarketEvent must be exactly 64 bytes");
-static_assert(alignof(MarketEvent) == CACHE_LINE_SIZE, "MarketEvent must be cache-line aligned");
+static_assert(alignof(MarketEvent) == 64, "MarketEvent must be 64-byte aligned");
 
 // Connection status event
 struct ConnectionStatus {

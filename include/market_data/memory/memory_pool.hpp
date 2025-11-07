@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/common.hpp"
+#include "../core/market_event.hpp"
 #include <atomic>
 #include <array>
 #include <memory>
@@ -151,7 +152,8 @@ private:
 
         void* raw = std::malloc(total_size_);
         if (!raw) {
-            throw std::bad_alloc();
+            // Cannot throw exceptions (compiled with -fno-exceptions)
+            std::abort();
         }
 
         // Align to cache line
@@ -222,11 +224,13 @@ public:
 
     [[nodiscard]] T* allocate(std::size_t n) {
         if (n != 1) {
-            throw std::bad_alloc(); // Only single-object allocation supported
+            // Only single-object allocation supported, compiled with -fno-exceptions
+            std::abort();
         }
         T* ptr = pool_->allocate();
         if (!ptr) {
-            throw std::bad_alloc();
+            // Pool exhausted, compiled with -fno-exceptions
+            std::abort();
         }
         return ptr;
     }
