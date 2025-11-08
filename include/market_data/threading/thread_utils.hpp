@@ -6,6 +6,8 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <climits>
+#include <cstdlib>
 
 #ifdef __linux__
 #include <pthread.h>
@@ -28,6 +30,11 @@ public:
      */
     static bool pin_to_cpu(std::thread& thread, int cpu_id) {
 #ifdef __linux__
+        // Validate cpu_id
+        if (cpu_id < 0 || cpu_id >= get_num_cpus()) {
+            return false;
+        }
+
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(cpu_id, &cpuset);
@@ -36,6 +43,7 @@ public:
                                        sizeof(cpu_set_t), &cpuset);
         return rc == 0;
 #else
+        (void)cpu_id; // Suppress unused parameter warning
         return false; // Not supported on non-Linux platforms
 #endif
     }
@@ -45,6 +53,11 @@ public:
      */
     static bool pin_current_thread_to_cpu(int cpu_id) {
 #ifdef __linux__
+        // Validate cpu_id
+        if (cpu_id < 0 || cpu_id >= get_num_cpus()) {
+            return false;
+        }
+
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(cpu_id, &cpuset);
@@ -53,6 +66,7 @@ public:
                                        sizeof(cpu_set_t), &cpuset);
         return rc == 0;
 #else
+        (void)cpu_id; // Suppress unused parameter warning
         return false;
 #endif
     }
@@ -65,6 +79,11 @@ public:
      */
     static bool set_realtime_priority(std::thread& thread, int priority = 99) {
 #ifdef __linux__
+        // Validate priority range
+        if (priority < 1 || priority > 99) {
+            return false;
+        }
+
         sched_param param;
         param.sched_priority = priority;
 
@@ -72,6 +91,7 @@ public:
                                       SCHED_FIFO, &param);
         return rc == 0;
 #else
+        (void)priority; // Suppress unused parameter warning
         return false;
 #endif
     }
@@ -81,6 +101,11 @@ public:
      */
     static bool set_current_thread_realtime(int priority = 99) {
 #ifdef __linux__
+        // Validate priority range
+        if (priority < 1 || priority > 99) {
+            return false;
+        }
+
         sched_param param;
         param.sched_priority = priority;
 
@@ -88,6 +113,7 @@ public:
                                       SCHED_FIFO, &param);
         return rc == 0;
 #else
+        (void)priority; // Suppress unused parameter warning
         return false;
 #endif
     }
@@ -185,7 +211,33 @@ public:
 
 private:
     /**
+     * Safe string to int conversion (no exceptions)
+     */
+    static bool safe_stoi(const std::string& str, int& result) {
+        if (str.empty()) {
+            return false;
+        }
+
+        char* end = nullptr;
+        long val = std::strtol(str.c_str(), &end, 10);
+
+        // Check for conversion errors
+        if (end == str.c_str() || *end != '\0') {
+            return false;
+        }
+
+        // Check for overflow
+        if (val < INT_MIN || val > INT_MAX) {
+            return false;
+        }
+
+        result = static_cast<int>(val);
+        return true;
+    }
+
+    /**
      * Parse CPU list format (e.g., "2-7,10-15")
+     * Safe version without exceptions
      */
     static std::vector<int> parse_cpu_list(const std::string& str) {
         std::vector<int> cpus;
@@ -196,14 +248,20 @@ private:
             size_t dash_pos = token.find('-');
             if (dash_pos != std::string::npos) {
                 // Range (e.g., "2-7")
-                int start = std::stoi(token.substr(0, dash_pos));
-                int end = std::stoi(token.substr(dash_pos + 1));
-                for (int i = start; i <= end; ++i) {
-                    cpus.push_back(i);
+                int start, end;
+                if (safe_stoi(token.substr(0, dash_pos), start) &&
+                    safe_stoi(token.substr(dash_pos + 1), end) &&
+                    start <= end) {
+                    for (int i = start; i <= end; ++i) {
+                        cpus.push_back(i);
+                    }
                 }
             } else {
                 // Single CPU
-                cpus.push_back(std::stoi(token));
+                int cpu;
+                if (safe_stoi(token, cpu)) {
+                    cpus.push_back(cpu);
+                }
             }
         }
 

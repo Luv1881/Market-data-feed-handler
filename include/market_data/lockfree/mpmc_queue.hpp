@@ -1,12 +1,55 @@
 #pragma once
 
 #include "../core/common.hpp"
+#include "../core/market_event.hpp"
 #include <atomic>
 #include <array>
 #include <thread>
 #include <vector>
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <emmintrin.h>
+#endif
+
 namespace market_data {
+
+/**
+ * Exponential backoff for CAS loops to reduce contention
+ */
+class ExponentialBackoff {
+public:
+    ExponentialBackoff() : count_(0) {}
+
+    void backoff() {
+        if (count_ < MAX_BACKOFF) {
+            for (int i = 0; i < (1 << count_); ++i) {
+                cpu_relax();
+            }
+            ++count_;
+        } else {
+            // After max backoff, yield to scheduler
+            std::this_thread::yield();
+        }
+    }
+
+    void reset() {
+        count_ = 0;
+    }
+
+private:
+    static constexpr int MAX_BACKOFF = 10;
+    int count_;
+
+    static void cpu_relax() {
+#if defined(__x86_64__) || defined(_M_X64)
+        _mm_pause();
+#elif defined(__aarch64__)
+        asm volatile("yield" ::: "memory");
+#else
+        std::this_thread::yield();
+#endif
+    }
+};
 
 /**
  * Lock-free Multi-Producer Multi-Consumer (MPMC) Queue
@@ -67,7 +110,8 @@ public:
         node->data = item;
         node->next.store(nullptr, std::memory_order_relaxed);
 
-        // Enqueue loop
+        // Enqueue loop with exponential backoff
+        ExponentialBackoff backoff;
         while (true) {
             Node* tail = tail_.load(std::memory_order_acquire);
             Node* next = tail->next.load(std::memory_order_acquire);
@@ -92,6 +136,7 @@ public:
                                                  std::memory_order_relaxed);
                 }
             }
+            backoff.backoff();
         }
     }
 
@@ -101,6 +146,7 @@ public:
      * @return true if successful, false if queue is empty
      */
     [[nodiscard]] bool try_dequeue(T& item) noexcept {
+        ExponentialBackoff backoff;
         while (true) {
             Node* head = head_.load(std::memory_order_acquire);
             Node* tail = tail_.load(std::memory_order_acquire);
@@ -118,6 +164,7 @@ public:
                                                  std::memory_order_relaxed);
                 } else {
                     if (next == nullptr) {
+                        backoff.backoff();
                         continue; // Inconsistent state, retry
                     }
 
@@ -134,6 +181,7 @@ public:
                     }
                 }
             }
+            backoff.backoff();
         }
     }
 
@@ -189,6 +237,7 @@ private:
      * Allocate a node from the free list
      */
     Node* allocate_node() noexcept {
+        ExponentialBackoff backoff;
         while (true) {
             Node* node = free_list_.load(std::memory_order_acquire);
             if (!node) {
@@ -201,6 +250,7 @@ private:
                                                 std::memory_order_relaxed)) {
                 return node;
             }
+            backoff.backoff();
         }
     }
 
@@ -210,6 +260,7 @@ private:
     void reclaim_node(Node* node) noexcept {
         if (!node) return;
 
+        ExponentialBackoff backoff;
         while (true) {
             Node* old_head = free_list_.load(std::memory_order_acquire);
             node->next.store(old_head, std::memory_order_relaxed);
@@ -219,6 +270,7 @@ private:
                                                 std::memory_order_relaxed)) {
                 return;
             }
+            backoff.backoff();
         }
     }
 

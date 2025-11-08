@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/common.hpp"
+#include "../core/market_event.hpp"
 #include <atomic>
 #include <array>
 #include <type_traits>
