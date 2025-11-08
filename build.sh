@@ -99,7 +99,10 @@ fi
 # Run benchmarks if requested
 if [ "$RUN_BENCHMARKS" = true ]; then
     echo -e "${GREEN}Running benchmarks...${NC}"
-    ./benchmarks/market_data_benchmarks
+    echo -e "${YELLOW}Circular Buffer Benchmark:${NC}"
+    ./benchmarks/benchmark_circular_buffer
+    echo -e "${YELLOW}Latency Benchmark:${NC}"
+    ./benchmarks/benchmark_latency
 fi
 
 echo -e "${GREEN}=== Done ===${NC}"
@@ -108,4 +111,5 @@ echo "Executables:"
 echo "  ./market_data_handler [duration_seconds]"
 echo "  ./examples/simple_example"
 echo "  ./tests/market_data_tests"
-echo "  ./benchmarks/market_data_benchmarks"
+echo "  ./benchmarks/benchmark_circular_buffer"
+echo "  ./benchmarks/benchmark_latency"

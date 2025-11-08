@@ -69,16 +69,16 @@ template <typename T, std::size_t MaxNodes = 1024 * 1024>
 class MPMCQueue {
 public:
     MPMCQueue() {
-        // Create dummy node
-        Node* dummy = allocate_node();
+        // Create dummy node from first slot
+        Node* dummy = &node_pool_[0];
         dummy->next.store(nullptr, std::memory_order_relaxed);
 
         head_.store(dummy, std::memory_order_relaxed);
         tail_.store(dummy, std::memory_order_relaxed);
 
-        // Pre-allocate node pool
-        for (std::size_t i = 0; i < MaxNodes - 1; ++i) {
-            Node* node = &node_pool_[i + 1];
+        // Pre-allocate remaining nodes to free list
+        for (std::size_t i = 1; i < MaxNodes; ++i) {
+            Node* node = &node_pool_[i];
             node->next.store(free_list_.load(std::memory_order_relaxed),
                            std::memory_order_relaxed);
             free_list_.store(node, std::memory_order_release);
