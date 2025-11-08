@@ -14,6 +14,7 @@
 #include <atomic>
 #include <vector>
 #include <iomanip>
+#include <memory>
 
 using namespace market_data;
 
@@ -246,8 +247,8 @@ int main(int argc, char** argv) {
     std::cout << "\n=== Starting Market Data Feed Simulation ===" << std::endl;
     std::cout << "Press Ctrl+C to stop...\n" << std::endl;
 
-    // Create circular buffer
-    CircularBuffer<MarketEvent, 1024 * 1024> buffer;
+    // Create circular buffer (on heap to avoid stack overflow - 67MB is too large for stack)
+    auto buffer = std::make_unique<CircularBuffer<MarketEvent, 1024 * 1024>>();
 
     // Determine CPU affinity
     int producer_cpu = isolated_cpus.empty() ? 0 : isolated_cpus[0];
@@ -255,8 +256,8 @@ int main(int argc, char** argv) {
                        (num_cpus > 1 ? 1 : 0);
 
     // Start threads
-    std::thread producer(producer_thread, producer_cpu, std::ref(buffer));
-    std::thread consumer(consumer_thread, consumer_cpu, std::ref(buffer));
+    std::thread producer(producer_thread, producer_cpu, std::ref(*buffer));
+    std::thread consumer(consumer_thread, consumer_cpu, std::ref(*buffer));
     std::thread stats(stats_thread);
 
     // Run for a duration or until interrupted

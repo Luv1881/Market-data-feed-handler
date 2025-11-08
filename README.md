@@ -63,41 +63,64 @@ A production-grade C++20 systems library engineered for deterministic real-time 
    - Percentile calculation (p50, p99, p99.9, p99.99)
    - Statistical summary
 
-## Building
+## Quick Start
+
+The fastest way to build and run:
+
+```bash
+# Build the project
+./build.sh
+
+# Run the tests to verify everything works
+cd build
+ctest --output-on-failure
+
+# Run the simple example to see it in action
+./examples/simple_example
+
+# Run benchmarks
+./benchmarks/benchmark_latency
+```
 
 ### Requirements
 
 - **Compiler**: Clang 17+ or GCC 13+ with C++20 support
 - **CMake**: 3.25 or higher
+- **Build Tool**: Ninja (recommended) or Make
 - **OS**: Linux (Ubuntu 22.04+ recommended)
 - **Architecture**: x86-64 (TSC support required)
 
-### Build Instructions
+### Option 1: Using the Build Script (Recommended)
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd market-data
+# Basic release build
+./build.sh
+```
 
+### Option 2: Manual CMake Build
+
+```bash
 # Create build directory
-mkdir build && cd build
+mkdir -p build && cd build
 
-# Configure with CMake
+# Configure with CMake (Ninja)
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_CXX_COMPILER=clang++ \
       ..
 
-# Build
+# Or configure with Make
+cmake -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CXX_COMPILER=g++ \
+      ..
+
+# Build (Ninja)
 ninja
+
+# Or build (Make)
+make -j$(nproc)
 
 # Run tests
 ctest --output-on-failure
-
-# Run main application (10 seconds)
-./market_data_handler 10
-
-# Run benchmarks
-./benchmarks/market_data_benchmarks
 ```
 
 ### Build Options
@@ -106,201 +129,119 @@ ctest --output-on-failure
 # Debug build with sanitizers
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON -DENABLE_UBSAN=ON ..
 
-# Thread sanitizer
+# Thread sanitizer (for race condition detection)
 cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_TSAN=ON ..
 
 # Disable tests/benchmarks
 cmake -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF ..
+
+# Disable examples
+cmake -DBUILD_EXAMPLES=OFF ..
 ```
 
-## System Configuration
+## Running
 
-For optimal performance, configure your Linux system:
+After building with `./build.sh`, all executables are located in the `build/` directory:
 
-### 1. CPU Isolation
-
-Add to kernel command line (e.g., `/etc/default/grub`):
+### 1. Unit Tests (Recommended First Step)
 
 ```bash
-isolcpus=2-7,10-15 nohz_full=2-7,10-15 rcu_nocbs=2-7,10-15
-```
-
-### 2. Huge Pages
-
-```bash
-# Enable huge pages
-sudo sysctl -w vm.nr_hugepages=1024
-
-# Persist across reboots
-echo "vm.nr_hugepages=1024" | sudo tee -a /etc/sysctl.conf
-```
-
-### 3. Network Tuning
-
-```bash
-# Increase receive buffer size
-sudo sysctl -w net.core.rmem_max=134217728
-sudo sysctl -w net.core.rmem_default=134217728
-
-# Disable NUMA balancing
-sudo sysctl -w kernel.numa_balancing=0
-```
-
-### 4. Real-Time Permissions
-
-Add to `/etc/security/limits.conf`:
-
-```
-your_user    soft    rtprio    99
-your_user    hard    rtprio    99
-your_user    soft    memlock   unlimited
-your_user    hard    memlock   unlimited
-```
-
-## Usage Example
-
-```cpp
-#include "market_data/lockfree/circular_buffer.hpp"
-#include "market_data/core/market_event.hpp"
-#include "market_data/utils/timestamp.hpp"
-
-using namespace market_data;
-
-int main() {
-    // Initialize
-    Timestamp::initialize();
-
-    // Create buffer
-    CircularBuffer<MarketEvent, 1024 * 1024> buffer;
-
-    // Producer thread
-    std::thread producer([&buffer]() {
-        ThreadUtils::pin_current_thread_to_cpu(2);
-
-        MarketEvent event;
-        event.venue_id = 1;
-        event.sequence_number = 0;
-        event.event_type = EventType::TRADE;
-
-        while (true) {
-            event.receive_timestamp = rdtscp();
-            buffer.try_push(event);
-            event.sequence_number++;
-        }
-    });
-
-    // Consumer thread
-    std::thread consumer([&buffer]() {
-        ThreadUtils::pin_current_thread_to_cpu(3);
-
-        MarketEvent event;
-        while (true) {
-            if (buffer.try_pop(event)) {
-                uint64_t latency = rdtscp() - event.receive_timestamp;
-                // Process event...
-            }
-        }
-    });
-
-    producer.join();
-    consumer.join();
-}
-```
-
-## Testing
-
-```bash
-# Build and run tests
+# Run all tests
 cd build
-ninja
-ctest --verbose
-
-# Run specific test
 ./tests/market_data_tests
+
+# Or use CTest
+ctest --output-on-failure
 ```
 
-## Benchmarking
+**Expected Output:**
+```
+[doctest] test cases:   6 |   6 passed | 0 failed | 0 skipped
+[doctest] assertions: 615 | 615 passed | 0 failed |
+[doctest] Status: SUCCESS!
+```
+
+**Tests include:**
+- Circular buffer operations (SPSC queue) - 4 test cases
+- MPMC queue operations - 1 test case
+- Memory pool allocation/deallocation - 1 test case
+- Thread utilities and CPU pinning
+
+### 2. Simple Example
+
+Basic demonstration of the lock-free circular buffer:
 
 ```bash
-# Run all benchmarks
-./benchmarks/market_data_benchmarks
-
-# Profile with perf
-perf stat -e cycles,instructions,cache-misses,branch-misses \
-    ./market_data_handler 10
-
-# Latency measurement
-perf record -g ./market_data_handler 10
-perf report
+cd build
+./examples/simple_example
 ```
 
-## Project Structure
-
+**Expected Output:**
 ```
-market-data/
-├── CMakeLists.txt              # Main build configuration
-├── README.md                   # This file
-├── Instructions.md             # Detailed specifications
-├── conanfile.txt              # Dependencies
-├── include/market_data/       # Public headers
-│   ├── core/                  # Core types and events
-│   ├── lockfree/              # Lock-free data structures
-│   ├── memory/                # Memory management
-│   ├── threading/             # Thread utilities
-│   ├── protocol/              # Protocol parsers
-│   ├── metrics/               # Metrics and monitoring
-│   └── utils/                 # Utilities
-├── src/                       # Implementation files
-│   ├── core/
-│   ├── memory/
-│   ├── threading/
-│   ├── metrics/
-│   ├── utils/
-│   └── main.cpp              # Main application
-├── tests/                     # Unit tests
-│   ├── test_circular_buffer.cpp
-│   ├── test_mpmc_queue.cpp
-│   └── test_memory_pool.cpp
-├── benchmarks/                # Performance benchmarks
-│   ├── benchmark_circular_buffer.cpp
-│   └── benchmark_latency.cpp
-└── examples/                  # Example programs
-    └── simple_example.cpp
+=== Simple Market Data Example ===
+Buffer capacity: 1024
+Event pushed to buffer
+Event received from buffer
+  Venue ID: 1
+  Sequence: 100
+  Symbol: AAPL
+  Price: $150
+  Quantity: 100
+  Side: BID
+
+=== Example Complete ===
 ```
 
-## Implementation Details
+This shows a single producer pushing a market event to the buffer and a consumer reading it.
 
-### Cache Line Alignment
+### 3. Latency Benchmark
 
-All hot-path data structures are aligned to 64-byte cache lines to prevent false sharing:
+Measures the performance of the latency tracking system:
 
-```cpp
-alignas(64) std::atomic<std::size_t> write_index_;
-alignas(64) std::atomic<std::size_t> read_index_;
+```bash
+cd build
+./benchmarks/benchmark_latency
 ```
 
-### Memory Ordering
+**Expected Output:**
+```
+=== Latency Tracking Benchmarks ===
 
-Explicit memory ordering for optimal performance:
+Benchmarking LatencyHistogram...
 
-- `memory_order_relaxed`: Thread-local operations
-- `memory_order_acquire/release`: Producer-consumer synchronization
-- `memory_order_seq_cst`: Only when necessary (rare)
+Results:
+  Samples: 1000000
+  Nanoseconds per record: ~29 ns
 
-### Lock-Free Progress Guarantees
+Histogram Statistics:
+  Count: 1000000
+  Min:   1 us
+  p50:   64 us
+  p99:   128 us
+  Max:   100 us
+  Mean:  50 us
+```
 
-- **Circular Buffer**: Wait-free (bounded operations)
-- **MPMC Queue**: Lock-free (guaranteed system-wide progress)
-- **Memory Pool**: Lock-free allocation/deallocation
+This benchmark records 1 million latency samples and shows the overhead per recording operation (~29 nanoseconds).
 
-## Performance Tips
+### 4. Circular Buffer Benchmark
 
-1. **Core Isolation**: Use `isolcpus` for dedicated cores
-2. **Huge Pages**: Enable for reduced TLB misses
-3. **CPU Frequency**: Lock to maximum with `performance` governor
-4. **Hyper-Threading**: Disable in BIOS for consistent latency
-5. **Power Management**: Disable C-states and P-states
-6. **NUMA**: Pin memory and threads to same node
+```bash
+cd build
+./benchmarks/benchmark_circular_buffer
+```
+
+Measures push/pop latency for the lock-free circular buffer.
+
+### 5. Main Application (Full System Simulation)
+
+The complete market data handler that simulates a high-frequency trading feed:
+
+```bash
+cd build
+./market_data_handler 10    # Run for 10 seconds
+./market_data_handler 30    # Run for 30 seconds
+```
 
 ## Known Limitations
 
@@ -319,17 +260,4 @@ Explicit memory ordering for optimal performance:
 - [ ] Gap fill and retransmission
 - [ ] Prometheus metrics export
 
-## License
 
-[Specify your license here]
-
-## Contributing
-
-[Contribution guidelines]
-
-## References
-
-- [Lock-Free Programming](https://preshing.com/20120612/an-introduction-to-lock-free-programming/)
-- [Memory Ordering](https://en.cppreference.com/w/cpp/atomic/memory_order)
-- [CPU Cache Effects](https://igoro.com/archive/gallery-of-processor-cache-effects/)
-- [Linux Real-Time](https://www.kernel.org/doc/Documentation/timers/NO_HZ.txt)
