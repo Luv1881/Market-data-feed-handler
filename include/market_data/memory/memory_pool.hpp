@@ -32,6 +32,8 @@ public:
 
     explicit MemoryPool(bool use_huge_pages = false)
         : use_huge_pages_(use_huge_pages)
+        , raw_memory_(nullptr)
+        , memory_(nullptr)
         , free_list_(nullptr)
     {
         // Allocate memory
@@ -52,7 +54,7 @@ public:
         if (use_huge_pages_) {
             munmap(memory_, total_size_);
         } else {
-            std::free(memory_);
+            std::free(raw_memory_);
         }
     }
 
@@ -150,14 +152,14 @@ private:
     void allocate_normal() {
         total_size_ = NumSlots * SLOT_SIZE + CACHE_LINE_SIZE;
 
-        void* raw = std::malloc(total_size_);
-        if (!raw) {
+        raw_memory_ = std::malloc(total_size_);
+        if (!raw_memory_) {
             // Cannot throw exceptions (compiled with -fno-exceptions)
             std::abort();
         }
 
         // Align to cache line
-        std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(raw);
+        std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(raw_memory_);
         std::uintptr_t aligned = (addr + CACHE_LINE_SIZE - 1) & ~(CACHE_LINE_SIZE - 1);
         memory_ = reinterpret_cast<void*>(aligned);
     }
@@ -199,7 +201,8 @@ private:
     }
 
     bool use_huge_pages_;
-    void* memory_;
+    void* raw_memory_;      // Original malloc'd pointer (for normal allocation)
+    void* memory_;          // Aligned pointer for actual use
     std::size_t total_size_;
 
     CACHE_ALIGNED std::atomic<FreeNode*> free_list_;

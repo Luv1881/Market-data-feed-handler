@@ -1,5 +1,6 @@
 #include "doctest.h"
 #include "market_data/memory/memory_pool.hpp"
+#include <vector>
 
 using namespace market_data;
 
